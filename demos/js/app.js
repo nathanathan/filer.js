@@ -105,6 +105,124 @@ function click(el) {
   el.dispatchEvent(evt);
 }
 
+function makeZip(i) {
+    var entry = entries[i];
+    var zip = new JSZip();
+    console.log(zip);
+    var zipDir = function(entry, callback) {
+        filer.ls(entry.fullPath, function(entries){
+            var filesToZip = entries.length;
+            var fileZipped = function(){
+                filesToZip--;
+                if(filesToZip === 0) {
+                    callback();
+                }
+            };
+            if(filesToZip === 0) {
+                callback();
+                return;
+            }
+            entries.forEach(function(entry){
+                if(entry.isDirectory) {
+                    zipDir(entry, function(){
+                        fileZipped();
+                    });
+                    return;
+                }
+                filer.open(entry.fullPath, function(file) {
+                    var reader = new FileReader();
+                    reader.onload = function(e) {
+                        console.log("adding...", entry.fullPath);
+                        zip.file(entry.fullPath, e.target.result);
+                        console.log("added", entry.fullPath);
+                        fileZipped();
+                    };
+                    reader.readAsText(file);
+                });
+            });
+        });
+    };
+    zipDir(entry, function(){
+        console.log('generating blob..');
+        filePreview.classList.toggle('show');
+        filePreview.innerHTML = [
+            '<div><b>', entry.name, '</b> ',
+            '</div>'].join('');
+        var blob = zip.generate({type:"blob"});
+        var linkContainer = document.createElement('div');
+        var myLink = document.createElement('a');
+        myLink.href = window.URL.createObjectURL(blob);
+        myLink.download = "myFile.zip";
+        myLink.textContent = "download zip";
+        linkContainer.appendChild(myLink);
+        filePreview.appendChild(linkContainer);
+    });
+
+}
+
+function junk(i) {
+  errors.textContent = ''; // Reset errors.
+
+  var entry = entries[i];
+
+  try {
+    filer.open(entry.name, function(file) {
+
+      filePreview.classList.toggle('show');
+
+      filePreview.innerHTML = [
+        '<div><b>', file.name, '</b> ',
+        (file.type ? '(' + file.type + ')' : ''), ' - ', file.size,
+        ' bytes, modified: ', file.lastModifiedDate.toLocaleDateString(),
+        '</div>'].join('');
+
+      if (file.type.match(/audio.*/)) {
+        var player = document.createElement('audio');
+        player.controls = true;
+        player.src = entry.toURL();
+
+        filePreview.appendChild(player);
+
+        player.load();
+        player.play();
+
+      } else if (file.type.match(/text.*/) ||
+                 file.type.match(/application\/pdf/)) {
+
+        var iframe = document.createElement('iframe');
+        iframe.src = entry.toURL();
+
+        filePreview.appendChild(iframe);
+
+      } else if (file.type.match(/image.*/)) {
+
+        var img = document.createElement('img');
+        img.src = entry.toURL();
+
+        filePreview.appendChild(img);
+
+     } else if (PREVIEWABLE_FILES.indexOf(Util.getFileExtension(file.name)) != -1) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          var textarea = document.createElement('textarea');
+          textarea.style.width = '50%';
+          textarea.style.height = '350px';
+          textarea.textContent = e.target.result;
+          filePreview.appendChild(textarea);
+        };
+        reader.readAsText(file);
+      } else {
+        var p = document.createElement('p');
+        p.textContent = 'No preview.'
+        filePreview.appendChild(p);
+      }
+
+    }, onError);
+  } catch(e) {
+    logger.log('<p class="error">' + e + '</p>');
+  }
+}
+
 
 function constructEntryHTML(entry, i) {
   var img = entry.isDirectory ?
@@ -117,6 +235,8 @@ function constructEntryHTML(entry, i) {
   if (entry.isFile) {
     html.push('<a href="javascript:" data-preview-link onclick="readFile(', i, ')"><img src="images/icons/library.png" class="icon" title="Preview file" alt="Preview file"></a>');
     html.push('<a href="', entry.toURL(), '" download><img src="images/icons/download.png" class="icon" title="Download" alt="Download"></a>');
+  } else {
+    html.push('<a href="javascript:" data-preview-link onclick="makeZip(', i, ')"><img src="images/icons/download.png" class="icon" title="Download" alt="Download"></a>');
   }
 
   html.push('<a href="javascript:" data-remove-link onclick="removeEntry(this,', i, ');"><img src="images/icons/trash_empty.png" class="icon" title="Remove" alt="Remove"></a>');
